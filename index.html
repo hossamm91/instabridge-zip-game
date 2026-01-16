@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zip Game</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes confetti-fall {
+      0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) translateX(calc(var(--speedX) * 100px)) rotate(calc(var(--rotation) * 50deg)); opacity: 0; }
+    }
+    .animate-confetti-fall {
+      animation: confetti-fall 3s ease-out forwards;
+    }
+    @keyframes bounce-in {
+      0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+      50% { transform: scale(1.1) rotate(2deg); }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    .animate-bounce-in {
+      animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-5deg); }
+      50% { transform: rotate(5deg); }
+    }
+    .animate-wiggle {
+      animation: wiggle 0.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+    
+    const GRID_SIZES = { easy: 5, medium: 6, hard: 7 };
+
+    function Confetti({ active }) {
+      const [particles, setParticles] = useState([]);
+      
+      useEffect(() => {
+        if (active) {
+          const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+          const newParticles = Array(80).fill(0).map((_, i) => ({
+            id: i,
+            x: Math.random() * 100,
+            y: -10 - Math.random() * 20,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            size: 6 + Math.random() * 8,
+            speedX: (Math.random() - 0.5) * 4,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 15,
+            shape: Math.random() > 0.5 ? 'rect' : 'circle',
+            delay: Math.random() * 500
+          }));
+          setParticles(newParticles);
+        } else {
+          setParticles([]);
+        }
+      }, [active]);
+
+      if (!active || particles.length === 0) return null;
+
+      return (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+          {particles.map(p => (
+            <div
+              key={p.id}
+              className="absolute animate-confetti-fall"
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y}%`,
+                width: p.shape === 'rect' ? p.size : p.size,
+                height: p.shape === 'rect' ? p.size * 0.6 : p.size,
+                backgroundColor: p.color,
+                borderRadius: p.shape === 'circle' ? '50%' : '2px',
+                transform: `rotate(${p.rotation}deg)`,
+                animationDelay: `${p.delay}ms`,
+                animationDuration: `${2.5 + Math.random()}s`,
+                '--speedX': p.speedX,
+                '--rotation': p.rotationSpeed,
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    function Celebration({ show, time, onDismiss }) {
+      if (!show) return null;
+      
+      return (
+        <div className="fixed inset-0 flex items-center justify-center z-40 bg-black/20" onClick={onDismiss}>
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 animate-bounce-in">
+            <div className="text-6xl mb-4 text-center animate-wiggle">🎉</div>
+            <h2 className="text-2xl font-bold text-slate-800 text-center mb-2">Brilliant!</h2>
+            <p className="text-slate-600 text-center mb-1">Puzzle completed in</p>
+            <p className="text-4xl font-mono font-bold text-blue-600 text-center">{time}</p>
+            <div className="flex gap-2 justify-center mt-4">
+              {['⭐', '🌟', '✨'].map((e, i) => (
+                <span key={i} className="text-2xl animate-pulse" style={{ animationDelay: `${i * 200}ms` }}>{e}</span>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 text-center mt-4">Tap anywhere to continue</p>
+          </div>
+        </div>
+      );
+    }
+
+    function generateSolvablePuzzle(size) {
+      const totalCells = size * size;
+      const grid = Array(size).fill(null).map(() => Array(size).fill(0));
+      const path = [];
+      const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+      
+      function shuffle(arr) {
+        const newArr = [...arr];
+        for (let i = newArr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+        }
+        return newArr;
+      }
+      
+      function isValid(x, y) {
+        return x >= 0 && x < size && y >= 0 && y < size && grid[y][x] === 0;
+      }
+      
+      function countUnvisitedNeighbors(x, y) {
+        let count = 0;
+        for (const [dx, dy] of directions) {
+          if (isValid(x + dx, y + dy)) count++;
+        }
+        return count;
+      }
+      
+      function findPath(x, y, step) {
+        grid[y][x] = step;
+        path.push({ x, y });
+        
+        if (step === totalCells) return true;
+        
+        const neighbors = [];
+        for (const [dx, dy] of directions) {
+          const nx = x + dx, ny = y + dy;
+          if (isValid(nx, ny)) {
+            neighbors.push({ x: nx, y: ny, score: countUnvisitedNeighbors(nx, ny) });
+          }
+        }
+        
+        neighbors.sort((a, b) => a.score - b.score || Math.random() - 0.5);
+        
+        for (const neighbor of neighbors) {
+          if (findPath(neighbor.x, neighbor.y, step + 1)) return true;
+        }
+        
+        grid[y][x] = 0;
+        path.pop();
+        return false;
+      }
+      
+      const startPositions = shuffle(
+        Array(totalCells).fill(0).map((_, i) => ({ x: i % size, y: Math.floor(i / size) }))
+      );
+      
+      for (const start of startPositions) {
+        if (findPath(start.x, start.y, 1)) break;
+      }
+      
+      const numCount = Math.min(size + 2, Math.floor(totalCells / 3));
+      const numbers = {};
+      const step = Math.floor(totalCells / (numCount - 1));
+      
+      for (let i = 0; i < numCount; i++) {
+        const pathIndex = Math.min(i * step, path.length - 1);
+        const pos = i === numCount - 1 ? path[path.length - 1] : path[pathIndex];
+        const key = `${pos.x},${pos.y}`;
+        numbers[key] = i + 1;
+      }
+      
+      return { path, numbers, size };
+    }
+
+    function ZipGame() {
+      const [difficulty, setDifficulty] = useState('easy');
+      const [puzzle, setPuzzle] = useState(null);
+      const [playerPath, setPlayerPath] = useState([]);
+      const [isDrawing, setIsDrawing] = useState(false);
+      const [gameWon, setGameWon] = useState(false);
+      const [timer, setTimer] = useState(0);
+      const [isRunning, setIsRunning] = useState(false);
+      const [nextNumber, setNextNumber] = useState(1);
+      const [showCelebration, setShowCelebration] = useState(false);
+
+      const size = puzzle?.size || GRID_SIZES[difficulty];
+      const cellSize = Math.min(60, 350 / size);
+
+      useEffect(() => {
+        newGame();
+      }, [difficulty]);
+
+      useEffect(() => {
+        let interval;
+        if (isRunning && !gameWon) {
+          interval = setInterval(() => setTimer(t => t + 1), 1000);
+        }
+        return () => clearInterval(interval);
+      }, [isRunning, gameWon]);
+
+      const newGame = useCallback(() => {
+        const newPuzzle = generateSolvablePuzzle(GRID_SIZES[difficulty]);
+        setPuzzle(newPuzzle);
+        setPlayerPath([]);
+        setGameWon(false);
+        setShowCelebration(false);
+        setTimer(0);
+        setIsRunning(false);
+        setNextNumber(1);
+      }, [difficulty]);
+
+      const getCellKey = (x, y) => `${x},${y}`;
+      const isInPath = (x, y) => playerPath.some(p => p.x === x && p.y === y);
+      const getPathIndex = (x, y) => playerPath.findIndex(p => p.x === x && p.y === y);
+      const isAdjacent = (x1, y1, x2, y2) => (Math.abs(x1 - x2) === 1 && y1 === y2) || (Math.abs(y1 - y2) === 1 && x1 === x2);
+
+      const checkWin = (path) => {
+        if (path.length !== size * size) return false;
+        const maxNum = Math.max(...Object.values(puzzle.numbers));
+        let currentNum = 1;
+        for (const cell of path) {
+          const key = getCellKey(cell.x, cell.y);
+          if (puzzle.numbers[key]) {
+            if (puzzle.numbers[key] !== currentNum) return false;
+            currentNum++;
+          }
+        }
+        return currentNum > maxNum;
+      };
+
+      const handleCellEnter = (x, y) => {
+        if (!isDrawing || gameWon) return;
+        
+        const lastCell = playerPath[playerPath.length - 1];
+        if (!lastCell) return;
+        
+        if (playerPath.length >= 2) {
+          const prevCell = playerPath[playerPath.length - 2];
+          if (prevCell.x === x && prevCell.y === y) {
+            setPlayerPath(playerPath.slice(0, -1));
+            const lastKey = getCellKey(lastCell.x, lastCell.y);
+            if (puzzle.numbers[lastKey] === nextNumber - 1) {
+              setNextNumber(nextNumber - 1);
+            }
+            return;
+          }
+        }
+        
+        if (isInPath(x, y)) return;
+        if (!isAdjacent(lastCell.x, lastCell.y, x, y)) return;
+        
+        const cellKey = getCellKey(x, y);
+        const cellNumber = puzzle.numbers[cellKey];
+        if (cellNumber && cellNumber !== nextNumber) return;
+        
+        const newPath = [...playerPath, { x, y }];
+        setPlayerPath(newPath);
+        
+        if (cellNumber === nextNumber) setNextNumber(nextNumber + 1);
+        
+        if (checkWin(newPath)) {
+          setGameWon(true);
+          setIsRunning(false);
+          setShowCelebration(true);
+        }
+      };
+
+      const handleCellDown = (x, y) => {
+        if (gameWon) return;
+        
+        const idx = getPathIndex(x, y);
+        if (idx !== -1) {
+          const newPath = playerPath.slice(0, idx + 1);
+          setPlayerPath(newPath);
+          let num = 1;
+          for (const cell of newPath) {
+            const key = getCellKey(cell.x, cell.y);
+            if (puzzle.numbers[key] === num) num++;
+          }
+          setNextNumber(num);
+          setIsDrawing(true);
+          return;
+        }
+        
+        const cellKey = getCellKey(x, y);
+        if (puzzle.numbers[cellKey] === 1) {
+          setPlayerPath([{ x, y }]);
+          setNextNumber(2);
+          setIsDrawing(true);
+          if (!isRunning) setIsRunning(true);
+        }
+      };
+
+      const handleMouseUp = () => setIsDrawing(false);
+
+      const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      const getLineSegments = () => {
+        const segments = [];
+        for (let i = 0; i < playerPath.length - 1; i++) {
+          segments.push({ from: playerPath[i], to: playerPath[i + 1], index: i });
+        }
+        return segments;
+      };
+
+      if (!puzzle) return <div className="p-8">Loading...</div>;
+
+      const maxNumber = Math.max(...Object.values(puzzle.numbers));
+
+      return (
+        <div 
+          className="flex flex-col items-center p-6 min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 select-none"
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchEnd={handleMouseUp}
+        >
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">Zip</h1>
+          <p className="text-slate-500 mb-4">Connect numbers in order, fill every cell</p>
+          
+          <div className="flex gap-2 mb-4">
+            {Object.keys(GRID_SIZES).map(d => (
+              <button
+                key={d}
+                onClick={() => setDifficulty(d)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  difficulty === d 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                {d.charAt(0).toUpperCase() + d.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-6 mb-4">
+            <div className="text-2xl font-mono font-semibold text-slate-700">{formatTime(timer)}</div>
+            <div className="text-sm text-slate-500">
+              Next: <span className="font-bold text-blue-600">{nextNumber > maxNumber ? '✓' : nextNumber}</span> / {maxNumber}
+            </div>
+          </div>
+
+          {gameWon && (
+            <div className="mb-4 px-6 py-3 bg-green-100 text-green-800 rounded-xl font-semibold text-lg">
+              🎉 Completed in {formatTime(timer)}!
+            </div>
+          )}
+
+          <Confetti active={showCelebration} />
+          <Celebration show={showCelebration} time={formatTime(timer)} onDismiss={() => setShowCelebration(false)} />
+
+          <div className="relative bg-white rounded-2xl shadow-xl p-4" style={{ touchAction: 'none' }}>
+            <svg 
+              width={size * cellSize} 
+              height={size * cellSize}
+              className="absolute top-4 left-4 pointer-events-none"
+            >
+              {getLineSegments().map(({ from, to, index }) => (
+                <line
+                  key={index}
+                  x1={from.x * cellSize + cellSize / 2}
+                  y1={from.y * cellSize + cellSize / 2}
+                  x2={to.x * cellSize + cellSize / 2}
+                  y2={to.y * cellSize + cellSize / 2}
+                  stroke="#3b82f6"
+                  strokeWidth={cellSize * 0.4}
+                  strokeLinecap="round"
+                />
+              ))}
+            </svg>
+            
+            <div 
+              className="grid gap-1 relative"
+              style={{ 
+                gridTemplateColumns: `repeat(${size}, ${cellSize}px)`,
+                gridTemplateRows: `repeat(${size}, ${cellSize}px)`
+              }}
+            >
+              {Array(size).fill(0).map((_, y) =>
+                Array(size).fill(0).map((_, x) => {
+                  const key = getCellKey(x, y);
+                  const number = puzzle.numbers[key];
+                  const inPath = isInPath(x, y);
+                  const isStart = number === 1;
+                  const isEnd = number === maxNumber;
+                  
+                  return (
+                    <div
+                      key={key}
+                      onMouseDown={() => handleCellDown(x, y)}
+                      onMouseEnter={() => handleCellEnter(x, y)}
+                      onTouchStart={(e) => { e.preventDefault(); handleCellDown(x, y); }}
+                      onTouchMove={(e) => {
+                        e.preventDefault();
+                        const touch = e.touches[0];
+                        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                        const cellCoords = element?.dataset?.coords;
+                        if (cellCoords) {
+                          const [cx, cy] = cellCoords.split(',').map(Number);
+                          handleCellEnter(cx, cy);
+                        }
+                      }}
+                      data-coords={`${x},${y}`}
+                      className={`
+                        flex items-center justify-center rounded-lg cursor-pointer transition-all
+                        ${inPath ? 'bg-blue-500' : 'bg-slate-100 hover:bg-slate-200'}
+                        ${number ? 'font-bold' : ''}
+                        ${isStart ? 'ring-2 ring-green-400' : ''}
+                        ${isEnd ? 'ring-2 ring-orange-400' : ''}
+                      `}
+                      style={{ width: cellSize, height: cellSize, fontSize: cellSize * 0.4 }}
+                    >
+                      {number && (
+                        <span 
+                          className={`flex items-center justify-center rounded-full ${inPath ? 'bg-white text-blue-600' : 'bg-slate-700 text-white'}`}
+                          style={{ width: cellSize * 0.65, height: cellSize * 0.65 }}
+                        >
+                          {number}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={newGame}
+            className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl"
+          >
+            New Puzzle
+          </button>
+          
+          <p className="mt-4 text-xs text-slate-400 max-w-xs text-center">
+            Start at 1, draw a path through all cells, hitting each number in order
+          </p>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<ZipGame />, document.getElementById('root'));
+  </script>
+</body>
+</html>

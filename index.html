@@ -114,8 +114,6 @@
 
     function generateSolvablePuzzle(size) {
       const totalCells = size * size;
-      const grid = Array(size).fill(null).map(() => Array(size).fill(0));
-      const path = [];
       const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
       
       function shuffle(arr) {
@@ -127,58 +125,86 @@
         return newArr;
       }
       
-      function isValid(x, y) {
-        return x >= 0 && x < size && y >= 0 && y < size && grid[y][x] === 0;
-      }
-      
-      function countUnvisitedNeighbors(x, y) {
-        let count = 0;
-        for (const [dx, dy] of directions) {
-          if (isValid(x + dx, y + dy)) count++;
+      function attemptPath() {
+        const grid = Array(size).fill(null).map(() => Array(size).fill(0));
+        const path = [];
+        
+        function isValid(x, y) {
+          return x >= 0 && x < size && y >= 0 && y < size && grid[y][x] === 0;
         }
-        return count;
+        
+        function countUnvisitedNeighbors(x, y) {
+          let count = 0;
+          for (const [dx, dy] of directions) {
+            if (isValid(x + dx, y + dy)) count++;
+          }
+          return count;
+        }
+        
+        function findPath(x, y, step) {
+          grid[y][x] = step;
+          path.push({ x, y });
+          
+          if (step === totalCells) return true;
+          
+          const neighbors = [];
+          for (const [dx, dy] of directions) {
+            const nx = x + dx, ny = y + dy;
+            if (isValid(nx, ny)) {
+              neighbors.push({ x: nx, y: ny, score: countUnvisitedNeighbors(nx, ny) });
+            }
+          }
+          
+          neighbors.sort((a, b) => a.score - b.score);
+          if (neighbors.length > 1 && neighbors[0].score === neighbors[1].score) {
+            shuffle(neighbors);
+          }
+          
+          for (const neighbor of neighbors) {
+            if (findPath(neighbor.x, neighbor.y, step + 1)) return true;
+          }
+          
+          grid[y][x] = 0;
+          path.pop();
+          return false;
+        }
+        
+        const startX = Math.floor(Math.random() * size);
+        const startY = Math.floor(Math.random() * size);
+        
+        if (findPath(startX, startY, 1)) {
+          return path;
+        }
+        return null;
       }
       
-      function findPath(x, y, step) {
-        grid[y][x] = step;
-        path.push({ x, y });
-        
-        if (step === totalCells) return true;
-        
-        const neighbors = [];
-        for (const [dx, dy] of directions) {
-          const nx = x + dx, ny = y + dy;
-          if (isValid(nx, ny)) {
-            neighbors.push({ x: nx, y: ny, score: countUnvisitedNeighbors(nx, ny) });
+      let path = null;
+      let attempts = 0;
+      const maxAttempts = 50;
+      
+      while (!path && attempts < maxAttempts) {
+        path = attemptPath();
+        attempts++;
+      }
+      
+      if (!path) {
+        path = [];
+        for (let y = 0; y < size; y++) {
+          if (y % 2 === 0) {
+            for (let x = 0; x < size; x++) path.push({ x, y });
+          } else {
+            for (let x = size - 1; x >= 0; x--) path.push({ x, y });
           }
         }
-        
-        neighbors.sort((a, b) => a.score - b.score || Math.random() - 0.5);
-        
-        for (const neighbor of neighbors) {
-          if (findPath(neighbor.x, neighbor.y, step + 1)) return true;
-        }
-        
-        grid[y][x] = 0;
-        path.pop();
-        return false;
-      }
-      
-      const startPositions = shuffle(
-        Array(totalCells).fill(0).map((_, i) => ({ x: i % size, y: Math.floor(i / size) }))
-      );
-      
-      for (const start of startPositions) {
-        if (findPath(start.x, start.y, 1)) break;
       }
       
       const numCount = Math.min(size + 2, Math.floor(totalCells / 3));
       const numbers = {};
-      const step = Math.floor(totalCells / (numCount - 1));
+      const step = Math.floor((path.length - 1) / (numCount - 1));
       
       for (let i = 0; i < numCount; i++) {
-        const pathIndex = Math.min(i * step, path.length - 1);
-        const pos = i === numCount - 1 ? path[path.length - 1] : path[pathIndex];
+        const pathIndex = i === numCount - 1 ? path.length - 1 : i * step;
+        const pos = path[pathIndex];
         const key = `${pos.x},${pos.y}`;
         numbers[key] = i + 1;
       }

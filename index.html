@@ -252,6 +252,7 @@
       const [isRunning, setIsRunning] = useState(false);
       const [nextNumber, setNextNumber] = useState(1);
       const [showCelebration, setShowCelebration] = useState(false);
+      const [isSolving, setIsSolving] = useState(false);
 
       const size = puzzle?.size || GRID_SIZES[difficulty];
       const cellSize = Math.min(60, 350 / size);
@@ -277,7 +278,44 @@
         setTimer(0);
         setIsRunning(false);
         setNextNumber(1);
+        setIsSolving(false);
       }, [difficulty]);
+
+      const solvePuzzle = useCallback(() => {
+        if (!puzzle || isSolving || gameWon) return;
+        
+        setIsSolving(true);
+        setPlayerPath([]);
+        setNextNumber(1);
+        setTimer(0);
+        setIsRunning(true);
+        
+        const solution = puzzle.path;
+        let step = 0;
+        
+        const interval = setInterval(() => {
+          step++;
+          const currentPath = solution.slice(0, step);
+          setPlayerPath(currentPath);
+          
+          let num = 1;
+          for (const cell of currentPath) {
+            const key = `${cell.x},${cell.y}`;
+            if (puzzle.numbers[key] === num) num++;
+          }
+          setNextNumber(num);
+          
+          if (step >= solution.length) {
+            clearInterval(interval);
+            setIsSolving(false);
+            setGameWon(true);
+            setIsRunning(false);
+            setShowCelebration(true);
+          }
+        }, 80);
+        
+        return () => clearInterval(interval);
+      }, [puzzle, isSolving, gameWon]);
 
       const getCellKey = (x, y) => `${x},${y}`;
       const isInPath = (x, y) => playerPath.some(p => p.x === x && p.y === y);
@@ -424,25 +462,6 @@
           <Celebration show={showCelebration} time={formatTime(timer)} onDismiss={() => setShowCelebration(false)} />
 
           <div className="relative bg-white rounded-2xl shadow-xl p-4" style={{ touchAction: 'none' }}>
-            <svg 
-              width={size * cellSize} 
-              height={size * cellSize}
-              className="absolute top-4 left-4 pointer-events-none"
-            >
-              {getLineSegments().map(({ from, to, index }) => (
-                <line
-                  key={index}
-                  x1={from.x * cellSize + cellSize / 2}
-                  y1={from.y * cellSize + cellSize / 2}
-                  x2={to.x * cellSize + cellSize / 2}
-                  y2={to.y * cellSize + cellSize / 2}
-                  stroke="#3b82f6"
-                  strokeWidth={cellSize * 0.4}
-                  strokeLinecap="round"
-                />
-              ))}
-            </svg>
-            
             <div 
               className="grid gap-1 relative"
               style={{ 
@@ -477,7 +496,7 @@
                       data-coords={`${x},${y}`}
                       className={`
                         flex items-center justify-center rounded-lg cursor-pointer transition-all
-                        ${inPath ? 'bg-blue-500' : 'bg-slate-100 hover:bg-slate-200'}
+                        bg-slate-100 hover:bg-slate-200
                         ${number ? 'font-bold' : ''}
                         ${isStart ? 'ring-2 ring-green-400' : ''}
                         ${isEnd ? 'ring-2 ring-orange-400' : ''}
@@ -486,8 +505,8 @@
                     >
                       {number && (
                         <span 
-                          className={`flex items-center justify-center rounded-full ${inPath ? 'bg-white text-blue-600' : 'bg-slate-700 text-white'}`}
-                          style={{ width: cellSize * 0.65, height: cellSize * 0.65 }}
+                          className={`flex items-center justify-center rounded-full ${inPath ? 'bg-blue-600 text-white' : 'bg-slate-700 text-white'}`}
+                          style={{ width: cellSize * 0.65, height: cellSize * 0.65, position: 'relative', zIndex: 20 }}
                         >
                           {number}
                         </span>
@@ -497,6 +516,34 @@
                 })
               )}
             </div>
+            <svg 
+              width={size * cellSize + (size - 1) * 4} 
+              height={size * cellSize + (size - 1) * 4}
+              className="absolute top-4 left-4 pointer-events-none"
+              style={{ zIndex: 10 }}
+            >
+              {getLineSegments().map(({ from, to, index }) => (
+                <line
+                  key={index}
+                  x1={from.x * (cellSize + 4) + cellSize / 2}
+                  y1={from.y * (cellSize + 4) + cellSize / 2}
+                  x2={to.x * (cellSize + 4) + cellSize / 2}
+                  y2={to.y * (cellSize + 4) + cellSize / 2}
+                  stroke="#3b82f6"
+                  strokeWidth={cellSize * 0.15}
+                  strokeLinecap="round"
+                />
+              ))}
+              {playerPath.map((cell, index) => (
+                <circle
+                  key={`dot-${index}`}
+                  cx={cell.x * (cellSize + 4) + cellSize / 2}
+                  cy={cell.y * (cellSize + 4) + cellSize / 2}
+                  r={cellSize * 0.25}
+                  fill="#3b82f6"
+                />
+              ))}
+            </svg>
           </div>
 
           <button
@@ -504,6 +551,18 @@
             className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl"
           >
             New Puzzle
+          </button>
+
+          <button
+            onClick={solvePuzzle}
+            disabled={isSolving || gameWon}
+            className={`mt-3 px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl ${
+              isSolving || gameWon
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {isSolving ? 'Solving...' : 'Solve It'}
           </button>
           
           <p className="mt-4 text-xs text-slate-400 max-w-xs text-center">

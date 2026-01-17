@@ -125,6 +125,9 @@
         return newArr;
       }
       
+      let iterations = 0;
+      const maxIterations = 10000;
+      
       function attemptPath() {
         const grid = Array(size).fill(null).map(() => Array(size).fill(0));
         const path = [];
@@ -142,6 +145,8 @@
         }
         
         function findPath(x, y, step) {
+          if (iterations++ > maxIterations) return false;
+          
           grid[y][x] = step;
           path.push({ x, y });
           
@@ -156,9 +161,7 @@
           }
           
           neighbors.sort((a, b) => a.score - b.score);
-          if (neighbors.length > 1 && neighbors[0].score === neighbors[1].score) {
-            shuffle(neighbors);
-          }
+          shuffle(neighbors.filter(n => n.score === neighbors[0]?.score));
           
           for (const neighbor of neighbors) {
             if (findPath(neighbor.x, neighbor.y, step + 1)) return true;
@@ -180,20 +183,47 @@
       
       let path = null;
       let attempts = 0;
-      const maxAttempts = 50;
+      const maxAttempts = 10;
       
-      while (!path && attempts < maxAttempts) {
+      while (!path && attempts < maxAttempts && iterations < maxIterations) {
         path = attemptPath();
         attempts++;
       }
       
       if (!path) {
         path = [];
-        for (let y = 0; y < size; y++) {
-          if (y % 2 === 0) {
-            for (let x = 0; x < size; x++) path.push({ x, y });
-          } else {
-            for (let x = size - 1; x >= 0; x--) path.push({ x, y });
+        const visited = Array(size).fill(null).map(() => Array(size).fill(false));
+        let x = Math.floor(Math.random() * size);
+        let y = Math.floor(Math.random() * size);
+        
+        for (let i = 0; i < totalCells; i++) {
+          path.push({ x, y });
+          visited[y][x] = true;
+          
+          const neighbors = shuffle(directions.map(([dx, dy]) => ({ x: x + dx, y: y + dy })))
+            .filter(n => n.x >= 0 && n.x < size && n.y >= 0 && n.y < size && !visited[n.y][n.x]);
+          
+          if (neighbors.length > 0) {
+            const next = neighbors.reduce((best, n) => {
+              const score = directions.filter(([dx, dy]) => {
+                const nx = n.x + dx, ny = n.y + dy;
+                return nx >= 0 && nx < size && ny >= 0 && ny < size && !visited[ny][nx];
+              }).length;
+              return score < best.score ? { ...n, score } : best;
+            }, { ...neighbors[0], score: 5 });
+            x = next.x;
+            y = next.y;
+          }
+        }
+        
+        if (path.length < totalCells) {
+          path = [];
+          for (let row = 0; row < size; row++) {
+            if (row % 2 === 0) {
+              for (let col = 0; col < size; col++) path.push({ x: col, y: row });
+            } else {
+              for (let col = size - 1; col >= 0; col--) path.push({ x: col, y: row });
+            }
           }
         }
       }
